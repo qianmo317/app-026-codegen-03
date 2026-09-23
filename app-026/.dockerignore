@@ -1,0 +1,15 @@
+node_modules
+dist
+.git
+.gitignore
+.env
+.env.*
+*.log
+coverage
+.vscode
+.idea
+Dockerfile
+nginx.conf
+README.md
+test-results
+playwright-report

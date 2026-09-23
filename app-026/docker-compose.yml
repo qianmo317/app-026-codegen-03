@@ -1,0 +1,11 @@
+services:
+  app-026:
+    build: .
+    ports:
+      - "8126:80"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 10s
+      timeout: 3s
+      start_period: 5s

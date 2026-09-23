@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.env*
+*.log
+coverage/
+.DS_Store
+.vscode/
+.idea/
+# 真实剧本与唱词绝不入库（未公开演出内容与版权内容）
+scripts/
+exports/
+*.docx
+test-results/
+playwright-report/
