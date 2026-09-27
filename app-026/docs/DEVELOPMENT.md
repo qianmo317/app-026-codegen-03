@@ -107,7 +107,7 @@ docker compose down
 ## 8. 发布清单
 
 1. `npm run build` 通过（含类型检查）；
-2. `npm test` 41 例全绿；
-3. `npm run e2e` 6 组全绿；
+2. `npm test` 52 例全绿；
+3. `npm run e2e` 7 组全绿；
 4. `docker compose up -d --build` 后：healthz=ok、容器 healthy、镜像 < 60MB、`/prompt/:id` 等深链 200；
 5. `docker compose down` 清理。

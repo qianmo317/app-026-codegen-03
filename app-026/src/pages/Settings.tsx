@@ -5,7 +5,9 @@ import { KEY_ACTIONS, keyLabel, loadKeymap, saveKeymap, resetKeymap } from '../e
 import type { Keymap, RemappableAction } from '../engine/keys'
 import { loadRemoteCode, genRemoteCode, saveRemoteCode } from '../engine/remote'
 import { WakeLockGuard } from '../engine/wakelock'
-import { Keyboard, Smartphone } from 'lucide-react'
+import * as repo from '../storage/repo'
+import * as transfer from '../storage/transfer'
+import { Keyboard, Smartphone, Package } from 'lucide-react'
 
 export function Settings() {
   const { settings, patch } = useSettingsCtx()
@@ -14,9 +16,64 @@ export function Settings() {
   const [remoteCode, setRemoteCode] = useState(() => loadRemoteCode())
   const [wakeSupported, setWakeSupported] = useState<boolean | null>(null)
 
+  /* 数据搬迁 */
+  const [bundle, setBundle] = useState<transfer.ExportBundle | null>(null)
+  const [analysis, setAnalysis] = useState<transfer.ImportAnalysis | null>(null)
+  const [report, setReport] = useState<transfer.ImportReport | null>(null)
+  const [ioError, setIoError] = useState('')
+  const [busy, setBusy] = useState(false)
+
   useEffect(() => {
     setWakeSupported(new WakeLockGuard().supported())
   }, [])
+
+  /* ---------- 数据搬迁 ---------- */
+
+  const onExport = async () => {
+    const b = await transfer.buildExportBundle()
+    const blob = new Blob([transfer.serializeBundle(b)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `opera-teleprompter-backup-${fileStamp(b.exportedAt)}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]
+    e.target.value = '' // 允许重复选同一文件
+    setIoError('')
+    setReport(null)
+    setAnalysis(null)
+    setBundle(null)
+    if (!f) return
+    try {
+      const b = transfer.parseBundle(await f.text())
+      const local = await repo.listScripts()
+      setBundle(b)
+      setAnalysis(transfer.analyzeBundle(b, local))
+    } catch (err) {
+      setIoError(err instanceof Error ? err.message : '文件读取失败')
+    }
+  }
+
+  const runImport = async (mode: transfer.ImportMode) => {
+    if (!bundle) return
+    setBusy(true)
+    setIoError('')
+    try {
+      const r = await transfer.applyImport(bundle, mode)
+      setReport(r)
+      setAnalysis(null)
+      setBundle(null)
+      if (r.settingsApplied && bundle.settings) patch(bundle.settings) // 同步全局设置 UI
+    } catch (err) {
+      setIoError(`导入失败：${err instanceof Error ? err.message : String(err)}。所有数据已回滚到导入前的状态，未做任何改动。`)
+    } finally {
+      setBusy(false)
+    }
+  }
 
   useEffect(() => {
     if (!capturing) return
@@ -147,6 +204,94 @@ export function Settings() {
         <p className="muted">屏幕常亮（Wake Lock）：{wakeSupported === null ? '检测中…' : wakeSupported ? '当前环境支持 ✓（需 HTTPS 或 localhost）' : '当前环境不支持，请在演出设备上手动设置不休屏'}</p>
         <p className="muted">所有文稿数据仅存本机 IndexedDB，不上传。</p>
       </section>
+
+      <section className="panel">
+        <h2><Package size={18} /> 数据搬迁（导出 / 导入）</h2>
+        <p className="muted">换设备或借电脑演出时：在本机导出全部内容成一个文件，拷到那台设备上导入即可。文件含全部剧目、模板、应用设置与练习记录。</p>
+        <div className="form-row">
+          <button className="btn" data-testid="btn-export" onClick={onExport}>导出全部数据</button>
+          <label className="btn btn-ghost">
+            选择备份文件导入…
+            <input data-testid="import-file" type="file" accept=".json,application/json" hidden onChange={onPickFile} />
+          </label>
+        </div>
+
+        {ioError && <p className="io-error" data-testid="io-error">{ioError}</p>}
+
+        {analysis && (
+          <div className="import-preview" data-testid="import-preview">
+            <h3>备份文件清单</h3>
+            <p className="muted">
+              导出于 {fmtTime(analysis.exportedAt)} · 格式 v{analysis.version} · 剧目 {analysis.items.length} 个 · 模板 {analysis.templates} 个 · 练习记录 {analysis.practiceRecords} 条
+              {analysis.hasSettings ? ' · 含应用设置（导入后替换本机设置）' : ''}
+            </p>
+            <ul className="import-list" data-testid="import-list">
+              {analysis.items.map((it, i) => (
+                <li key={i} data-conflict={it.conflict || undefined}>
+                  《{it.title}》 {it.segments} 段 {it.lines} 行{it.conflict && <b className="conflict-tag">与本机同名</b>}
+                </li>
+              ))}
+            </ul>
+            {analysis.conflicts.length > 0 && (
+              <p className="io-warn" data-testid="conflict-list">与本机同名：{analysis.conflicts.map((t) => `《${t}》`).join('、')}</p>
+            )}
+            <div className="import-modes">
+              <p data-testid="merge-desc">
+                <b>整份并入</b>：新增 {analysis.merge.add} 个剧目
+                {analysis.merge.skip > 0 ? `；${analysis.merge.skip} 个同名剧目保持本机现状不动` : ''}。
+              </p>
+              <p data-testid="overwrite-desc">
+                <b>同名替换</b>：新增 {analysis.overwrite.add} 个剧目
+                {analysis.overwrite.replace > 0 ? `；用文件内容替换 ${analysis.overwrite.replace} 个本机同名剧目` : ''}。
+              </p>
+            </div>
+            <div className="form-row">
+              <button className="btn" data-testid="btn-import-merge" disabled={busy} onClick={() => runImport('merge')}>
+                {busy ? '导入中…' : '整份并入（同名跳过）'}
+              </button>
+              <button className="btn btn-danger" data-testid="btn-import-overwrite" disabled={busy} onClick={() => runImport('overwrite')}>
+                {busy ? '导入中…' : '同名替换导入'}
+              </button>
+              <button className="btn btn-ghost" data-testid="btn-import-cancel" disabled={busy} onClick={() => { setAnalysis(null); setBundle(null) }}>取消</button>
+            </div>
+          </div>
+        )}
+
+        {report && (
+          <div className="import-report" data-testid="import-report">
+            <h3>导入完成</h3>
+            <p>
+              新增 {report.added.length} 个 · 替换 {report.replaced.length} 个 · 同名跳过 {report.skipped.length} 个
+              {report.templatesAdded + report.templatesReplaced + report.templatesSkipped > 0 &&
+                ` · 模板：增 ${report.templatesAdded} / 替 ${report.templatesReplaced} / 跳 ${report.templatesSkipped}`}
+              {report.practiceRecords > 0 && ` · 练习记录 ${report.practiceRecords} 条`}
+              {report.settingsApplied && ' · 应用设置已更新'}
+            </p>
+            <ul className="import-list" data-testid="report-list">
+              {report.added.map((e, i) => (
+                <li key={`a${i}`} data-kind="added">＋ 新增《{e.title}》（{e.lines} 行）</li>
+              ))}
+              {report.replaced.map((e, i) => (
+                <li key={`r${i}`} data-kind="replaced">⇄ 替换《{e.title}》（{e.lines} 行）</li>
+              ))}
+              {report.skipped.map((e, i) => (
+                <li key={`s${i}`} data-kind="skipped">— 跳过《{e.title}》（与本机同名，本机内容未改动）</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </section>
     </div>
   )
+}
+
+function fmtTime(ts: number) {
+  const d = new Date(ts)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+function fileStamp(ts: number) {
+  const d = new Date(ts)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`
 }

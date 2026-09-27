@@ -18,10 +18,10 @@
 │                   usePractice / useEngine 等        │
 ├──────────────────────┬──────────────────────────────┤
 │  engine/             │  storage/                    │
-│  scroller · autofit  │  db（IndexedDB 封装）         │  ← 无 UI 的纯逻辑层
+│  scroller · autofit  │  db（IndexedDB 封装 + 事务）  │  ← 无 UI 的纯逻辑层
 │  parse · cues ·      │  repo（仓库 + 默认设置 +      │
 │  virtual · keys ·    │     设置双写持久化）           │
-│  segments · remote · │                              │
+│  segments · remote · │  transfer（导出/导入搬迁）    │
 │  wakelock            │                              │
 ├──────────────────────┴──────────────────────────────┤
 │  types.ts（数据模型） · router.tsx（手写 history 路由）│
@@ -70,12 +70,19 @@
 - 消息双通道：`RemoteCommand`（遥控端→提词端指令）与 `RemoteStatus`（提词端→遥控端状态回报，800ms 节流）。
 - `isRemoteCommand` / `isRemoteStatus` 类型守卫隔离非法消息；遥控端 3 秒未收到 status 判离线。
 
-### 2.7 存储 `src/storage/db.ts` + `repo.ts`
+### 2.7 存储 `src/storage/db.ts` + `repo.ts` + `transfer.ts`
 
 - IndexedDB v1，四个 store：`scripts` / `templates` / `settings` / `practice`（keyPath `id`）。
 - `repo.ts` 暴露领域仓库函数；**设置采用双写持久化**（见 §3 设计决策 D4）：
   - 写：localStorage **同步**直写（含 `savedAt` 时间戳）+ IndexedDB 异步落盘；
   - 读：两侧各取一份，`savedAt` 较新者胜，用默认值合并补齐缺省字段。
+- `db.ts` 另暴露 `idbTx(stores, fn)`：**跨 store 单事务批量写**，fn 内任一操作抛错即 `tx.abort()`，全部改动回滚（IndexedDB 事务原生保证）。
+- `transfer.ts` 数据搬迁（换设备整份搬运）：
+  - 导出 `buildExportBundle`：剧目/模板/设置/练习记录打成 `ExportBundle`（`format` 标识 + `version` 格式版本 + `exportedAt` 导出时间），`serializeBundle` 落成 JSON 文件。
+  - 解析 `parseBundle`：校验格式标识、版本（高于本应用版本拒收）、导出时间与逐条剧目结构，坏文件抛中文错误。
+  - 清单 `analyzeBundle`：按剧名比对本机，给出两种模式的改动数——`merge`（整份并入：新增 N、同名跳过 M）与 `overwrite`（同名替换：新增 N、替换 M）。
+  - 导入 `applyImport`：`planImport`（纯函数，可测）先算写入计划，再在**单个 `idbTx` 事务**内执行全部增删——任何一条失败整体回滚，不会只进来一半；事务提交后才补设置的 localStorage 同步直写（LS 无法纳入 IDB 事务）。
+  - 剧目 id 策略：新增保留文件 id（练习记录关联不断）；仅当文件 id 撞上本机**不同名**剧目时重新生成，并把对应练习记录 remap 到新 id；overwrite 同名时删本机剧目（连同其练习记录）以文件版本为准。练习记录只随本次实际写入的剧目走。
 
 ### 2.8 状态编排 `src/state/hooks.ts`
 
@@ -104,7 +111,7 @@
 | Prompt | `/prompt/:id` | 排练：双引擎分栏（双人）、跳段（保播放状态 + 段循环标记自动续圈）、循环开关、调速、主题循环、全屏、提醒卡、遥控监听、**循环计时（见 §3 D5）** |
 | Stage | `/prompt/:id/stage` | 演出：Wake Lock 配对获取/释放、全屏、控件 2.5s 自动隐藏、锁定盾层（长按 2s SVG 进度环、Esc 解锁） |
 | Remotes | `/remotes` | 配对码输入、连接状态、遥控按钮（含数字跳段） |
-| Settings | `/settings` | 全部设置项 + 键位自定义表（remap 捕获 keydown）+ 恢复默认 + 遥控码 |
+| Settings | `/settings` | 全部设置项 + 键位自定义表（remap 捕获 keydown）+ 恢复默认 + 遥控码 + 数据搬迁（导出/清单/两种模式导入/逐剧目报告） |
 | Print | `/print/:id` | 打印版（段落 + 标记色条 + 批注 + 图例，`@media print`） |
 
 路由为手写 history 路由（`navigate` / `useRoute` / `Link` / `matchRoute`），不依赖 react-router。
@@ -140,6 +147,7 @@
 | D6 | 遥控用 BroadcastChannel 而非 WebRTC | md 允许「同屏双端 + 手势映射」简化；零依赖、无信令服务器、同浏览器场景完全够用 |
 | D7 | 手写 history 路由 | 避免 react-router 依赖（用户约定：无新第三方依赖）；页面仅 7 个，路由需求简单 |
 | D8 | 演出解锁用长按 2s + SVG 进度环 | 舞台误触退出是灾难；进度环给用户确定性反馈，`Esc` 保留桌面端逃生口 |
+| D9 | 导入用单个 IndexedDB 事务，计划与执行分离 | 「不允许只进来一半」是硬需求：事务内任一 put 失败 → abort → 整体回滚（IDB 原生保证）；`planImport` 纯函数先算计划，既可在事务外穷尽校验，也让单测无需模拟 UI |
 
 ## 5. 性能预算与实测
 

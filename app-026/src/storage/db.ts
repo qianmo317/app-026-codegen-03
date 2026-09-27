@@ -53,3 +53,40 @@ export const idb = {
     return runReq(db.transaction(store, 'readonly').objectStore(store).getAll()) as Promise<T[]>
   },
 }
+
+export interface TxOps {
+  put: (store: string, value: unknown, key?: IDBValidKey) => Promise<void>
+  delete: (store: string, key: IDBValidKey) => Promise<void>
+}
+
+/**
+ * 跨 store 单事务批量写：任一操作失败即 abort，全部改动回滚（IndexedDB 事务原生保证），
+ * 用于导入等「不允许只进来一半」的场景。
+ * 注意：fn 内只能 await 本事务的 put/delete——等待外部 Promise 会让事务提前提交。
+ */
+export async function idbTx(stores: string[], fn: (ops: TxOps) => Promise<void>): Promise<void> {
+  const db = await openDb()
+  return new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(stores, 'readwrite')
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => reject(tx.error ?? new Error('IndexedDB transaction failed'))
+    tx.onabort = () => reject(tx.error ?? new Error('IndexedDB transaction aborted'))
+    const ops: TxOps = {
+      put: async (store, value, key) => {
+        const os = tx.objectStore(store)
+        await runReq(key !== undefined ? os.put(value, key) : os.put(value))
+      },
+      delete: async (store, key) => {
+        await runReq(tx.objectStore(store).delete(key))
+      },
+    }
+    fn(ops).catch(() => {
+      // fn 内任何一步抛错：回滚整个事务（onabort 负责 reject）
+      try {
+        tx.abort()
+      } catch {
+        /* 事务可能已结束，onerror/onabort 会 settle */
+      }
+    })
+  })
+}

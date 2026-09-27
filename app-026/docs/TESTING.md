@@ -6,9 +6,9 @@
 ## 1. 测试体系总览
 
 ```
-单元测试 (vitest, 41 例)      → 引擎/解析/存储/协议的确定性断言
+单元测试 (vitest, 52 例)      → 引擎/解析/存储/协议的确定性断言
         ↓
-E2E (Playwright, 6 组 spec)   → 真实浏览器全旅程与性能
+E2E (Playwright, 7 组 spec)   → 真实浏览器全旅程与性能
         ↓
 浏览器点测 (人工代理, 7 项)    → 视觉/交互/Console 巡检
         ↓
@@ -18,14 +18,14 @@ Docker 自检                   → 镜像体积/healthz/SPA 回退/容器健康
 运行方式（均在 `app-026/`）：
 
 ```bash
-npm test                          # 单元测试，一次性 41 例
+npm test                          # 单元测试，一次性 52 例
 npx vitest                        # watch 模式
 npm run e2e                       # 全部 E2E（webServer 自动起 preview :4173）
 npx playwright test tests/e2e/journey.spec.ts    # 单个 spec
 npx playwright test --headed      # 有头模式观察执行
 ```
 
-## 2. 单元测试（tests/unit/，41 例全绿）
+## 2. 单元测试（tests/unit/，52 例全绿）
 
 | 文件 | 环境 | 覆盖点 |
 |---|---|---|
@@ -35,12 +35,13 @@ npx playwright test --headed      # 有头模式观察执行
 | `virtual.test.ts` | node | 可视窗口计算边界（首/尾/越界/窗口收缩） |
 | `keys.test.ts` | jsdom | 默认键位表；自定义持久化；损坏 JSON 回退默认；localStorage 不可用时内存回退（vi.stubGlobal） |
 | `db.test.ts` | node | fake-indexeddb：四 store 建库、get/put/delete/getAll；设置保存读取往返（含 savedAt 剥离与默认值合并） |
+| `transfer.test.ts` | node | 数据搬迁：导出含格式版本/导出时间/全部内容；坏文件中文报错；清单同名与两种模式计数；merge 同名跳过 + 练习记录随剧目走；overwrite 同名替换；id 撞车换新 id 并 remap 练习记录；**中途失败整体回滚**（Symbol 触发 DataCloneError，断言库内数据与导入前完全一致） |
 | `wakelock.test.ts` | jsdom | WakeLockGuard 获取/释放**配对**（防泄漏）；不支持环境静默降级 |
 | `remote.test.ts` | node | 4 位配对码生成；`isRemoteCommand`/`isRemoteStatus` 类型守卫拒绝非法消息；合法消息往返 |
 
 工具：`tests/unit/setup.ts` 加载 fake-indexeddb（auto 注册），jsdom 环境文件按文件头注释 `// @vitest-environment jsdom` 切换。
 
-## 3. E2E 测试（tests/e2e/，6 组全绿）
+## 3. E2E 测试（tests/e2e/，7 组全绿）
 
 | Spec | 场景 |
 |---|---|
@@ -50,6 +51,7 @@ npx playwright test --headed      # 有头模式观察执行
 | `perf.spec.ts` | 5000 行文稿滚动 ≥ 55fps（rAF 计时采样，retries=2） |
 | `offline.spec.ts` | 断网后所有操作纯本地：SPA 内跳转、编辑保存、排练播放（客户端路由不 reload） |
 | `remote.spec.ts` | 双 context：提词端显示 4 位配对码（字母数字混合）→ 遥控端连接 → 播放/暂停/调速/跳段指令生效 + 状态回报 |
+| `transfer.spec.ts` | 数据搬迁全旅程：导出文件（文件名/格式版本/导出时间）→ 删除一个剧目模拟另一台设备 → 导入清单（数量/同名标注/两种模式改动数）→ 整份并入（报告新增/跳过明细）→ 同名替换（报告替换明细）→ 坏文件报错且数据不动 |
 
 `playwright.config.ts`：`workers: 1`（计时断言稳定性）、baseURL `:4173`、webServer 自动起 `vite preview`（`reuseExistingServer: true`）。
 

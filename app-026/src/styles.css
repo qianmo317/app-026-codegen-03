@@ -277,6 +277,22 @@ input[type='number'] { width: 56px; padding: 2px 4px; }
 .keymap-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
 .key-cell { font-weight: 700; font-variant-numeric: tabular-nums; }
 
+/* ============ 数据搬迁 ============ */
+.import-preview, .import-report { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-top: 12px; }
+.import-preview h3, .import-report h3 { margin: 0 0 8px; font-size: 15px; }
+.import-list { list-style: none; padding: 0; margin: 8px 0; }
+.import-list li { padding: 5px 0; border-bottom: 1px dashed var(--border); font-size: 14px; }
+.import-list li:last-child { border-bottom: none; }
+.import-list li[data-conflict] { color: var(--danger); }
+.import-list li[data-kind='added'] { color: var(--ok); }
+.import-list li[data-kind='replaced'] { color: var(--accent); }
+.import-list li[data-kind='skipped'] { color: var(--muted); }
+.conflict-tag { margin-left: 8px; font-size: 12px; border: 1px solid var(--danger); border-radius: 999px; padding: 1px 8px; }
+.import-modes { margin: 10px 0; font-size: 14px; }
+.import-modes p { margin: 6px 0; }
+.io-error { color: var(--danger); margin: 10px 0 0; }
+.io-warn { color: var(--danger); margin: 6px 0; }
+
 /* ============ 打印 ============ */
 .print-page { padding: 24px 32px; max-width: 800px; margin: 0 auto; }
 .print-bar { display: flex; gap: 10px; margin-bottom: 16px; }
