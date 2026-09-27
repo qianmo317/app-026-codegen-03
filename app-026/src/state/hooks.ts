@@ -25,10 +25,13 @@ export function useAsync<T>(fetcher: () => Promise<T>, deps: unknown[]): { data:
 /** 全局设置：加载 + 立即保存（repo 内含 localStorage 同步兜底，防卸载丢数据） */
 export function useSettings() {
   const [settings, setSettings] = useState<PromptSettings | null>(null)
+  const [tick, setTick] = useState(0)
 
   useEffect(() => {
     repo.loadSettings().then(setSettings)
-  }, [])
+  }, [tick])
+
+  const reload = useCallback(() => setTick((t) => t + 1), [])
 
   const patch = useCallback((p: Partial<PromptSettings>) => {
     setSettings((prev) => {
@@ -39,7 +42,7 @@ export function useSettings() {
     })
   }, [])
 
-  return { settings, patch }
+  return { settings, patch, reload }
 }
 
 /** 单个剧本：加载 + 防抖自动保存 */

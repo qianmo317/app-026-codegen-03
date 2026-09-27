@@ -14,13 +14,14 @@ import type { PromptSettings } from './types'
 interface Ctx {
   settings: PromptSettings | null
   patch: (p: Partial<PromptSettings>) => void
+  reload: () => void
 }
-const SettingsCtx = createContext<Ctx>({ settings: null, patch: () => {} })
+const SettingsCtx = createContext<Ctx>({ settings: null, patch: () => {}, reload: () => {} })
 export const useSettingsCtx = () => useContext(SettingsCtx)
 
 export default function App() {
   const path = useRoute()
-  const { settings, patch } = useSettings()
+  const { settings, patch, reload } = useSettings()
 
   useEffect(() => {
     if (settings) applyTheme(settings.theme)
@@ -46,7 +47,7 @@ export default function App() {
   }
 
   return (
-    <SettingsCtx.Provider value={{ settings, patch }}>
+    <SettingsCtx.Provider value={{ settings, patch, reload }}>
       {settings ? page : <div className="page center">加载中…</div>}
     </SettingsCtx.Provider>
   )

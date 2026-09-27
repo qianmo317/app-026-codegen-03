@@ -3,6 +3,7 @@ import { Link, navigate } from '../router'
 import { useAsync } from '../state/hooks'
 import * as repo from '../storage/repo'
 import { buildScriptFromText } from '../engine/parse'
+import { TransferPanel } from '../components/TransferPanel'
 import type { Script, ScriptStyle } from '../types'
 import { FileText, Pencil, Play, Printer, Trash2, Maximize, Upload, Download } from 'lucide-react'
 
@@ -87,6 +88,13 @@ export function Home() {
           <button className="btn btn-ghost" data-testid="btn-sample-speech" onClick={() => importSample('/samples/speech-demo.txt', '示例·年会主持稿', 'speech')}>主持稿示例</button>
         </div>
       </section>
+
+      <TransferPanel
+        onImported={() => {
+          reload()
+          reloadTpl()
+        }}
+      />
 
       <section className="panel">
         <h2>剧目列表 {scripts ? `(${scripts.length})` : ''}</h2>
